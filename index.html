@@ -234,49 +234,110 @@ function detectMerchantAndPurpose(description,isForeign){
   const raw = normalizeText(description);
   const upper = raw.toUpperCase();
 
+  // 剝除 HSBC 刷卡機終端代號前綴（例如 GPY7235 / GPY4593）
+  const clean = raw.replace(/^GPY\d{4,6}\s*/i, "").trim();
+  const cleanUpper = clean.toUpperCase();
+
   if(upper.startsWith("國外交易手續費")){
     const after = raw.replace(/^國外交易手續費/i,"").trim();
     return { merchant: after || "海外交易手續費", purpose:"費用", confidence:0.98, isForeignFee:true };
   }
 
   const rules = [
-    [/AGODA/i, "Agoda", "旅宿", 0.96],
-    [/BOOKING/i, "Booking.com", "旅宿", 0.96],
-    [/AIRBNB/i, "Airbnb", "旅宿", 0.96],
-    [/JAL|JALAIRLINE/i, "日本航空 (JAL)", "交通", 0.95],
-    [/FINNAIR/i, "Finnair", "交通", 0.95],
-    [/LUFTHANSA/i, "Lufthansa", "交通", 0.95],
-    [/EUROWINGS/i, "Eurowings", "交通", 0.95],
-    [/NORWEGIAN/i, "Norwegian Air", "交通", 0.95],
-    [/UBER/i, "Uber", "交通", 0.88],
-    [/高鐵|T EXPRESS|HSR/i, "台灣高鐵", "交通", 0.90],
-    [/DBVERTRIEB|DEUTSCHE BAHN|DB/i, "Deutsche Bahn (DB)", "交通", 0.92],
-    [/JR EAST|JREAST/i, "JR East", "購物與日常", 0.88],
-    [/REWE/i, "REWE", "購物與日常", 0.92],
-    [/ROSSMANN/i, "Rossmann", "購物與日常", 0.92],
-    [/CARREFOUR|家樂福/i, "家樂福", "購物與日常", 0.92],
-    [/PXMART|全聯/i, "全聯", "購物與日常", 0.92],
-    [/FOODPANDA|UBEREATS/i, "外送平台", "餐飲", 0.90],
-    [/STARBUCKS|星巴克/i, "星巴克", "餐飲", 0.90],
-    [/KKTIX|TICKET|影城|CINEMA/i, "票券/活動", "文化與活動", 0.86],
-    [/TECHNOSEUM|MUSEUM/i, "博物館/展館", "文化與活動", 0.82],
-    [/NETFLIX|SPOTIFY|YOUTUBE/i, "數位訂閱", "訂閱與服務", 0.90],
-    [/OPENAI|CHATGPT/i, "OpenAI ChatGPT", "訂閱與服務", 0.97],
-    [/INS|LIFE|保險/i, "保險", "保險與金融", 0.75],
-    [/繳款|轉帳/i, "繳款/轉帳", "繳款/退款", 0.98],
+    // ── 旅宿 ──────────────────────────────────────────────────
+    [/AGODA/i,                         "Agoda",                    "旅宿",     0.96],
+    [/BOOKING/i,                       "Booking.com",              "旅宿",     0.96],
+    [/AIRBNB/i,                        "Airbnb",                   "旅宿",     0.96],
+    [/HOTEL/i,                         "旅館",                     "旅宿",     0.78],
+
+    // ── 航空 ──────────────────────────────────────────────────
+    [/JAL|JALAIRLINE|JALWELLNESS/i,    "日本航空 (JAL)",            "交通",     0.95],
+    [/FINNAIR/i,                       "Finnair",                  "交通",     0.95],
+    [/LUFTHANSA/i,                     "Lufthansa",                "交通",     0.95],
+    [/EUROWINGS/i,                     "Eurowings",                "交通",     0.95],
+    [/NORWEGIAN/i,                     "Norwegian Air",            "交通",     0.95],
+
+    // ── 陸路交通 ──────────────────────────────────────────────
+    [/高鐵|T EXPRESS|HSR/i,            "台灣高鐵",                 "交通",     0.92],
+    [/DBVERTRIEB|DEUTSCHE BAHN/i,      "Deutsche Bahn (DB)",       "交通",     0.93],
+    [/MTA\*|NYCTPAYG/i,                "MTA（紐約地鐵）",           "交通",     0.95],
+    [/HSLMOBII|HSLFI/i,                "HSL（赫爾辛基大眾運輸）",   "交通",     0.93],
+    [/LIME\*|^LIME /i,                 "Lime 電動滑板車",          "交通",     0.90],
+    [/微笑單車|YOUBIKE/i,               "YouBike 微笑單車",         "交通",     0.95],
+    [/台灣大車隊|55688/i,               "台灣大車隊",               "交通",     0.93],
+    [/UBR\*|UBER/i,                    "Uber",                     "交通",     0.86],
+
+    // ── 日本便利商店 ──────────────────────────────────────────
+    [/FAMILYMART|FAMILY MART/i,        "全家 FamilyMart",          "購物與日常", 0.95],
+    [/SEVEN.?ELEVEN|7.?ELEVEN|7-ELEV|SEVENELEV/i, "7-ELEVEN",   "購物與日常", 0.95],
+    [/LAWSON/i,                        "Lawson",                   "購物與日常", 0.95],
+
+    // ── 超市 ──────────────────────────────────────────────────
+    [/LIFECORPORATION|LIFE CORP/i,     "LIFE（日本超市）",          "購物與日常", 0.90],
+    [/EDEKA/i,                         "EDEKA",                    "購物與日常", 0.93],
+    [/LIDL/i,                          "LIDL",                     "購物與日常", 0.93],
+    [/KAUFLAND|KAUFL/i,                "Kaufland",                 "購物與日常", 0.92],
+    [/TRADERJOE|TRADER JOE/i,          "Trader Joe's",             "購物與日常", 0.92],
+    [/WHOLEFDS|WHOLE FOODS/i,          "Whole Foods",              "購物與日常", 0.92],
+    [/REWE/i,                          "REWE",                     "購物與日常", 0.92],
+    [/ROSSMANN/i,                      "Rossmann",                 "購物與日常", 0.92],
+    [/CARREFOUR|家樂福/i,              "家樂福",                   "購物與日常", 0.92],
+    [/PXMART|全聯/i,                   "全聯",                     "購物與日常", 0.92],
+    [/JR EAST|JREAST/i,                "JR East 購物中心",         "購物與日常", 0.88],
+
+    // ── 餐飲 ──────────────────────────────────────────────────
+    [/FOODPANDA|UBEREATS/i,            "外送平台",                 "餐飲",     0.90],
+    [/STARBUCKS|星巴克/i,              "星巴克",                   "餐飲",     0.92],
+    [/MCDONALDS|MCDONALD/i,           "McDonald's",               "餐飲",     0.95],
+    [/FIVEGUYS|FIVE GUYS/i,            "Five Guys",                "餐飲",     0.93],
+    [/KATZ/i,                          "Katz's Deli",              "餐飲",     0.88],
+    [/VAPIANO/i,                       "Vapiano",                  "餐飲",     0.92],
+    [/PORTACOFFEE|PORTA COFFEE/i,      "Porta Coffee",             "餐飲",     0.90],
+    [/風來坊/i,                        "風來坊",                   "餐飲",     0.90],
+    [/DIMSUM|DIM SUM/i,                "飲茶餐廳",                 "餐飲",     0.85],
+    [/RESTAURAN/i,                     "餐廳",                     "餐飲",     0.72],
+    [/COFFEE FELLOW|PUBLICCOFFEE|COFFEEFELLOW|COFFEEFEL|ELBGOLD/i, "咖啡廳", "餐飲", 0.88],
+    [/COFFEE|CAFFE/i,                  "咖啡廳",                   "餐飲",     0.68],
+
+    // ── 文化與活動 ────────────────────────────────────────────
+    [/KKTIX|影城|CINEMA/i,             "票券/活動",                "文化與活動", 0.88],
+    [/TECHNOSEUM|MUSEUM|MUSEUM.SHOP/i, "博物館/展館",              "文化與活動", 0.84],
+    [/STATUEOFLIBERTY|STATUE OF LIB/i, "自由女神像",               "文化與活動", 0.93],
+    [/STATUECRUISE|STATUE CRUISE/i,    "自由女神像渡輪",           "文化與活動", 0.93],
+    [/NATIONALARCH|NATIONAL ARCH/i,    "美國國家檔案館",           "文化與活動", 0.88],
+    [/GETYOURGUIDE/i,                  "GetYourGuide 導覽活動",    "文化與活動", 0.92],
+    [/TOURIST.?INFO/i,                 "旅遊諮詢中心",             "文化與活動", 0.82],
+    [/WINTERTRAUM/i,                   "冬季市集",                 "文化與活動", 0.88],
+    [/MINERALB/i,                      "溫泉/礦泉浴",              "文化與活動", 0.82],
+    [/TEMPPELIAUKIO|TEMPPELI/i,        "岩石教堂（赫爾辛基）",      "文化與活動", 0.90],
+
+    // ── 訂閱與服務 ────────────────────────────────────────────
+    [/NETFLIX|SPOTIFY|YOUTUBE/i,       "數位訂閱",                 "訂閱與服務", 0.92],
+    [/OPENAI|CHATGPT/i,                "OpenAI ChatGPT",           "訂閱與服務", 0.97],
+    [/FLIGHTRADAR/i,                   "Flightradar24",            "訂閱與服務", 0.93],
+    [/myfone|MYFONE/i,                 "myfone 電信",              "訂閱與服務", 0.92],
+    [/VODAFONE|VESTA\*VODAFONE/i,      "Vodafone 電信",            "訂閱與服務", 0.90],
+    [/FACEBK|FACEBOOK/i,               "Facebook 廣告",            "訂閱與服務", 0.88],
+
+    // ── 保險與金融 ────────────────────────────────────────────
+    [/CATHAY LIFE|CATHAYLIFE/i,        "國泰人壽",                 "保險與金融", 0.95],
+    [/INS|保險/i,                      "保險",                     "保險與金融", 0.72],
+
+    // ── 繳款/退款 ─────────────────────────────────────────────
+    [/繳款|轉帳/i,                     "繳款/轉帳",                "繳款/退款", 0.98],
   ];
 
   for(const [re, merchant, purpose, confidence] of rules){
-    if(re.test(raw) || re.test(upper)){
+    if(re.test(clean) || re.test(cleanUpper)){
       return { merchant, purpose, confidence, isForeignFee:false };
     }
   }
 
-  // fallback heuristic
+  // fallback：用去掉 GPY 前綴後的文字當店家名稱，可讀性更高
   if(isForeign){
-    return { merchant: raw || "（未知海外店家）", purpose:"其他", confidence:0.45, isForeignFee:false };
+    return { merchant: clean || "（未知海外店家）", purpose:"其他", confidence:0.45, isForeignFee:false };
   }
-  return { merchant: raw || "（未知店家）", purpose:"其他", confidence:0.55, isForeignFee:false };
+  return { merchant: clean || "（未知店家）", purpose:"其他", confidence:0.55, isForeignFee:false };
 }
 
 function normalizeRecord(r){
