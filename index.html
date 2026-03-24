@@ -1,0 +1,771 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>信用卡消費紀錄分析儀表板</title>
+  <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
+  <style>
+    :root{
+      --bg:#0b1020;
+      --panel:#121a2b;
+      --text:#ebf1ff;
+      --muted:#aab6d2;
+      --border:rgba(255,255,255,.10);
+      --accent:#7aa2ff;
+      --good:#6ee7b7;
+      --warn:#fbbf24;
+      --bad:#fb7185;
+    }
+    html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif}
+    .wrap{max-width:1240px;margin:0 auto;padding:18px 16px 30px}
+    h1{margin:0;font-size:24px}
+    .sub{margin-top:6px;color:var(--muted);font-size:13px;line-height:1.55}
+    .row{display:grid;grid-template-columns:1fr;gap:12px;margin-top:14px}
+    @media(min-width:980px){.row.two{grid-template-columns:420px 1fr}.row.grid2{grid-template-columns:1fr 1fr}.row.grid3{grid-template-columns:1fr 1fr 1fr}}
+    .card{background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.02));border:1px solid var(--border);border-radius:18px;padding:14px;box-shadow:0 12px 28px rgba(0,0,0,.25)}
+    .card h2{margin:0 0 10px 0;font-size:14px;color:var(--muted)}
+    .controls{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .controls .full{grid-column:1/-1}
+    label{display:block;color:var(--muted);font-size:12px;margin-bottom:6px}
+    select,input[type="text"],input[type="file"]{
+      width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid var(--border);
+      color:var(--text);border-radius:12px;padding:10px 11px;outline:none
+    }
+    .inline{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .btns{display:flex;gap:8px;flex-wrap:wrap}
+    button{
+      background:rgba(122,162,255,.16);border:1px solid rgba(122,162,255,.35);color:var(--text);
+      border-radius:12px;padding:9px 11px;cursor:pointer;font-weight:700;font-size:12px
+    }
+    button.secondary{background:rgba(255,255,255,.05);border:1px solid var(--border)}
+    button:hover{background:rgba(122,162,255,.24)}
+    .pill{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid var(--border);color:var(--muted);font-size:11px}
+    .pill.good{border-color:rgba(110,231,183,.35);color:var(--good)}
+    .pill.warn{border-color:rgba(251,191,36,.35);color:var(--warn)}
+    .pill.bad{border-color:rgba(251,113,133,.35);color:var(--bad)}
+    .kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    @media(min-width:980px){.kpis{grid-template-columns:repeat(4,1fr)}}
+    .kpi{background:rgba(0,0,0,.16);border:1px solid var(--border);border-radius:14px;padding:12px}
+    .kpi .name{font-size:12px;color:var(--muted);margin-bottom:6px}
+    .kpi .val{font-size:19px;font-weight:900}
+    .kpi .hint{margin-top:5px;font-size:11px;color:var(--muted);line-height:1.35}
+    .chart{height:340px}
+    .chart.tall{height:420px}
+    .hint{color:var(--muted);font-size:12px;line-height:1.45}
+    .empty{padding:14px;border:1px dashed var(--border);border-radius:14px;color:var(--muted);font-size:13px;line-height:1.55}
+    .tableWrap{overflow:auto;max-height:520px;border:1px solid var(--border);border-radius:14px}
+    table{width:100%;border-collapse:collapse;font-size:12px;background:rgba(0,0,0,.12)}
+    th,td{padding:10px 10px;border-bottom:1px solid rgba(255,255,255,.08);vertical-align:top;white-space:nowrap}
+    th{position:sticky;top:0;background:rgba(15,22,38,.96);z-index:2;color:var(--muted);text-align:left}
+    td.muted{color:var(--muted)}
+    .hero{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+    .list{margin:0;padding-left:18px;color:var(--muted);font-size:12px;line-height:1.7}
+    .drop{
+      border:1px dashed rgba(255,255,255,.22);border-radius:16px;padding:12px;background:rgba(255,255,255,.03)
+    }
+    .drop.drag{border-color:rgba(122,162,255,.4);background:rgba(122,162,255,.08)}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <div>
+      <h1>信用卡消費紀錄分析儀表板</h1>
+      <div class="sub">
+        純前端靜態頁面，適合公開部署；<b>沒有內嵌任何真實交易資料</b>。<br/>
+        可一次上傳多個月份 JSON，彙整分析支出、用途、海外/國內、店家與時間軸。<br/>
+        支援的原始格式：<span class="pill">[ ... ]</span> 或 <span class="pill">{ "payload": [ ... ] }</span>，每筆至少含 <span class="mono">txnDate / description / ntdAmount</span>。
+      </div>
+    </div>
+    <div class="btns">
+      <button id="btnDemo">載入內建 Demo</button>
+      <button id="btnClear" class="secondary">清空資料</button>
+      <button id="btnDownloadCsv" class="secondary">下載目前視圖 CSV</button>
+    </div>
+  </div>
+
+  <div class="row two">
+    <div class="card">
+      <h2>資料匯入與篩選</h2>
+      <div id="dropZone" class="drop">
+        <b>拖曳多個 JSON 檔案到這裡</b>，或使用下方檔案選擇器。<br/>
+        <span class="hint">建議：一次選取多個月份，例如 202601.json、202602.json、202603.json。</span>
+      </div>
+      <div style="margin-top:10px">
+        <input id="fileInput" type="file" accept=".json" multiple />
+      </div>
+
+      <div class="controls" style="margin-top:12px">
+        <div>
+          <label>月份</label>
+          <select id="monthFilter"><option value="all">全部月份</option></select>
+        </div>
+        <div>
+          <label>地理</label>
+          <select id="geoFilter">
+            <option value="all">全部</option>
+            <option value="foreign">只看海外（含海外手續費）</option>
+            <option value="domestic">只看國內</option>
+          </select>
+        </div>
+        <div>
+          <label>視圖</label>
+          <select id="scopeFilter">
+            <option value="spend">只看支出（ntdAmount > 0）</option>
+            <option value="all">含繳款/退款</option>
+          </select>
+        </div>
+        <div>
+          <label>關鍵字搜尋</label>
+          <input id="searchBox" type="text" placeholder="店家 / 用途 / 原始描述" />
+        </div>
+        <div class="full inline">
+          <label style="margin:0"><input id="includeFee" type="checkbox" checked /> 含海外交易手續費</label>
+          <label style="margin:0"><input id="showLowConfidence" type="checkbox" checked /> 顯示低信心店家解析</label>
+        </div>
+      </div>
+
+      <div style="margin-top:10px" class="hint" id="loadStatus">尚未載入資料。可先用右上角「載入內建 Demo」體驗功能。</div>
+    </div>
+
+    <div class="card">
+      <h2>摘要</h2>
+      <div class="kpis" id="kpis"></div>
+      <div class="hint" id="activeFilters" style="margin-top:10px"></div>
+    </div>
+  </div>
+
+  <div class="row grid2">
+    <div class="card">
+      <h2>用途分布</h2>
+      <div id="chartPurpose" class="chart"></div>
+      <div class="hint">點扇形可鎖定某用途，例如交通、旅宿、餐飲。</div>
+    </div>
+    <div class="card">
+      <h2>月份支出總覽</h2>
+      <div id="chartMonth" class="chart"></div>
+      <div class="hint">用來比較各月總支出；點月份柱狀也可直接切月份。</div>
+    </div>
+  </div>
+
+  <div class="row grid2">
+    <div class="card">
+      <h2>海外：國家/地區分布</h2>
+      <div id="chartCountry" class="chart"></div>
+      <div class="hint">點某個國家可看該國支出與店家。</div>
+    </div>
+    <div class="card">
+      <h2>主要店家（Top 15）</h2>
+      <div id="chartMerchant" class="chart"></div>
+      <div class="hint">點某店家可把整個畫面聚焦到該商戶。</div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="card">
+      <h2>時間軸：每天花費（依用途堆疊）</h2>
+      <div id="chartTimeline" class="chart tall"></div>
+      <div class="hint">適合對照旅程或大型消費事件，觀察哪幾天主要在花旅宿/交通/購物。</div>
+    </div>
+  </div>
+
+  <div class="row grid2">
+    <div class="card">
+      <h2>用途 → 店家（Treemap）</h2>
+      <div id="chartTreemap" class="chart tall"></div>
+    </div>
+    <div class="card">
+      <h2>需要人工對照的交易</h2>
+      <div id="reviewBox" class="empty">目前沒有資料。</div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="card">
+      <h2>明細表</h2>
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>交易日</th>
+              <th>月份</th>
+              <th>金額(TWD)</th>
+              <th>用途</th>
+              <th>店家</th>
+              <th>海外</th>
+              <th>國家</th>
+              <th>解析信心</th>
+              <th class="muted">原始描述</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div class="hint" id="tableHint" style="margin-top:8px"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const DEMO_TRANSACTIONS = [{"txnDate": "2026-01-03", "postingDate": "2026-01-04", "description": "AGODA.COM INTERNET SG", "isForeignTxn": true, "txnLoc": "SGP", "amtCy": "TWD", "amount": 18600, "ntdAmount": 18600}, {"txnDate": "2026-01-03", "postingDate": "2026-01-04", "description": "國外交易手續費AGODA.COM INTERNET SG", "isForeignTxn": false, "txnLoc": "", "amtCy": "TWD", "amount": 279, "ntdAmount": 279}, {"txnDate": "2026-01-05", "postingDate": "2026-01-06", "description": "JALAIRLINE TAIPEI", "isForeignTxn": true, "txnLoc": "JPN", "amtCy": "TWD", "amount": 12500, "ntdAmount": 12500}, {"txnDate": "2026-01-05", "postingDate": "2026-01-06", "description": "國外交易手續費JALAIRLINE TAIPEI", "isForeignTxn": false, "txnLoc": "", "amtCy": "TWD", "amount": 188, "ntdAmount": 188}, {"txnDate": "2026-01-08", "postingDate": "2026-01-08", "description": "高鐵T EXPRESS", "isForeignTxn": false, "txnLoc": "TWN", "amtCy": "TWD", "amount": 1490, "ntdAmount": 1490}, {"txnDate": "2026-01-09", "postingDate": "2026-01-09", "description": "UBER *TRIP", "isForeignTxn": false, "txnLoc": "TWN", "amtCy": "TWD", "amount": 265, "ntdAmount": 265}, {"txnDate": "2026-01-10", "postingDate": "2026-01-10", "description": "FOODPANDA*ORDER", "isForeignTxn": false, "txnLoc": "TWN", "amtCy": "TWD", "amount": 328, "ntdAmount": 328}, {"txnDate": "2026-01-12", "postingDate": "2026-01-12", "description": "NETFLIX.COM", "isForeignTxn": false, "txnLoc": "TWN", "amtCy": "TWD", "amount": 390, "ntdAmount": 390}, {"txnDate": "2026-01-14", "postingDate": "2026-01-14", "description": "KKTIX TICKET", "isForeignTxn": false, "txnLoc": "TWN", "amtCy": "TWD", "amount": 1800, "ntdAmount": 1800}, {"txnDate": "2026-01-15", "postingDate": "2026-01-16", "description": "OPENAI*CHATGPT", "isForeignTxn": true, "txnLoc": "USA", "amtCy": "USD", "amount": 20, "ntdAmount": 650}, {"txnDate": "2026-01-15", "postingDate": "2026-01-16", "description": "國外交易手續費OPENAI*CHATGPT", "isForeignTxn": false, "txnLoc": "", "amtCy": "TWD", "amount": 10, "ntdAmount": 10}, {"txnDate": "2026-01-18", "postingDate": "2026-01-18", "description": "全聯PXMART", "isForeignTxn": false, "txnLoc": "TWN", "amtCy": "TWD", "amount": 945, "ntdAmount": 945}, {"txnDate": "2026-01-20", "postingDate": "2026-01-21", "description": "他行提款機繳款(轉帳)", "isForeignTxn": false, "txnLoc": "TWN", "amtCy": "TWD", "amount": -25000, "ntdAmount": -25000}, {"txnDate": "2026-02-02", "postingDate": "2026-02-03", "description": "DBVertriebGmbH", "isForeignTxn": true, "txnLoc": "DEU", "amtCy": "EUR", "amount": 44.5, "ntdAmount": 1600}, {"txnDate": "2026-02-02", "postingDate": "2026-02-03", "description": "國外交易手續費DBVertriebGmbH", "isForeignTxn": false, "txnLoc": "", "amtCy": "TWD", "amount": 24, "ntdAmount": 24}, {"txnDate": "2026-02-03", "postingDate": "2026-02-04", "description": "REWE Berlin", "isForeignTxn": true, "txnLoc": "DEU", "amtCy": "EUR", "amount": 18.6, "ntdAmount": 670}, {"txnDate": "2026-02-03", "postingDate": "2026-02-04", "description": "Rossmann 3344", "isForeignTxn": true, "txnLoc": "DEU", "amtCy": "EUR", "amount": 11.1, "ntdAmount": 400}, {"txnDate": "2026-02-04", "postingDate": "2026-02-05", "description": "TECHNOSEUM Mannheim", "isForeignTxn": true, "txnLoc": "DEU", "amtCy": "EUR", "amount": 88.9, "ntdAmount": 3200}, {"txnDate": "2026-02-04", "postingDate": "2026-02-05", "description": "國外交易手續費TECHNOSEUM Mannheim", "isForeignTxn": false, "txnLoc": "", "amtCy": "TWD", "amount": 48, "ntdAmount": 48}, {"txnDate": "2026-02-07", "postingDate": "2026-02-07", "description": "JR EAST SHOPPING", "isForeignTxn": true, "txnLoc": "JPN", "amtCy": "JPY", "amount": 23000, "ntdAmount": 4700}, {"txnDate": "2026-02-07", "postingDate": "2026-02-07", "description": "國外交易手續費JR EAST SHOPPING", "isForeignTxn": false, "txnLoc": "", "amtCy": "TWD", "amount": 71, "ntdAmount": 71}, {"txnDate": "2026-02-10", "postingDate": "2026-02-10", "description": "星巴克台北時代", "isForeignTxn": false, "txnLoc": "TWN", "amtCy": "TWD", "amount": 185, "ntdAmount": 185}, {"txnDate": "2026-02-11", "postingDate": "2026-02-11", "description": "家樂福 Carrefour", "isForeignTxn": false, "txnLoc": "TWN", "amtCy": "TWD", "amount": 1220, "ntdAmount": 1220}, {"txnDate": "2026-02-13", "postingDate": "2026-02-13", "description": "台灣大車隊55688", "isForeignTxn": false, "txnLoc": "TWN", "amtCy": "TWD", "amount": 340, "ntdAmount": 340}, {"txnDate": "2026-02-16", "postingDate": "2026-02-17", "description": "CATHAY LIFE INS", "isForeignTxn": false, "txnLoc": "TWN", "amtCy": "TWD", "amount": 2980, "ntdAmount": 2980}, {"txnDate": "2026-02-20", "postingDate": "2026-02-20", "description": "他行提款機繳款(轉帳)", "isForeignTxn": false, "txnLoc": "TWN", "amtCy": "TWD", "amount": -18000, "ntdAmount": -18000}];
+
+let DATA = [];
+const clicked = { purpose:null, month:null, country:null, merchant:null };
+
+function fmtTwd(n){
+  if(n===null || n===undefined || !isFinite(n)) return "-";
+  const sign = n < 0 ? "-" : "";
+  return sign + Math.abs(n).toLocaleString("zh-Hant-TW",{maximumFractionDigits:0});
+}
+function esc(s){
+  return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[c]));
+}
+function normalizeText(s){
+  return String(s ?? "").normalize("NFKC").replace(/\s+/g," ").trim();
+}
+function monthOf(txnDate){
+  return String(txnDate || "").slice(0,7);
+}
+function unique(arr){ return Array.from(new Set(arr)); }
+
+function detectMerchantAndPurpose(description,isForeign){
+  const raw = normalizeText(description);
+  const upper = raw.toUpperCase();
+
+  if(upper.startsWith("國外交易手續費")){
+    const after = raw.replace(/^國外交易手續費/i,"").trim();
+    return { merchant: after || "海外交易手續費", purpose:"費用", confidence:0.98, isForeignFee:true };
+  }
+
+  const rules = [
+    [/AGODA/i, "Agoda", "旅宿", 0.96],
+    [/BOOKING/i, "Booking.com", "旅宿", 0.96],
+    [/AIRBNB/i, "Airbnb", "旅宿", 0.96],
+    [/JAL|JALAIRLINE/i, "日本航空 (JAL)", "交通", 0.95],
+    [/FINNAIR/i, "Finnair", "交通", 0.95],
+    [/LUFTHANSA/i, "Lufthansa", "交通", 0.95],
+    [/EUROWINGS/i, "Eurowings", "交通", 0.95],
+    [/NORWEGIAN/i, "Norwegian Air", "交通", 0.95],
+    [/UBER/i, "Uber", "交通", 0.88],
+    [/高鐵|T EXPRESS|HSR/i, "台灣高鐵", "交通", 0.90],
+    [/DBVERTRIEB|DEUTSCHE BAHN|DB/i, "Deutsche Bahn (DB)", "交通", 0.92],
+    [/JR EAST|JREAST/i, "JR East", "購物與日常", 0.88],
+    [/REWE/i, "REWE", "購物與日常", 0.92],
+    [/ROSSMANN/i, "Rossmann", "購物與日常", 0.92],
+    [/CARREFOUR|家樂福/i, "家樂福", "購物與日常", 0.92],
+    [/PXMART|全聯/i, "全聯", "購物與日常", 0.92],
+    [/FOODPANDA|UBEREATS/i, "外送平台", "餐飲", 0.90],
+    [/STARBUCKS|星巴克/i, "星巴克", "餐飲", 0.90],
+    [/KKTIX|TICKET|影城|CINEMA/i, "票券/活動", "文化與活動", 0.86],
+    [/TECHNOSEUM|MUSEUM/i, "博物館/展館", "文化與活動", 0.82],
+    [/NETFLIX|SPOTIFY|YOUTUBE/i, "數位訂閱", "訂閱與服務", 0.90],
+    [/OPENAI|CHATGPT/i, "OpenAI ChatGPT", "訂閱與服務", 0.97],
+    [/INS|LIFE|保險/i, "保險", "保險與金融", 0.75],
+    [/繳款|轉帳/i, "繳款/轉帳", "繳款/退款", 0.98],
+  ];
+
+  for(const [re, merchant, purpose, confidence] of rules){
+    if(re.test(raw) || re.test(upper)){
+      return { merchant, purpose, confidence, isForeignFee:false };
+    }
+  }
+
+  // fallback heuristic
+  if(isForeign){
+    return { merchant: raw || "（未知海外店家）", purpose:"其他", confidence:0.45, isForeignFee:false };
+  }
+  return { merchant: raw || "（未知店家）", purpose:"其他", confidence:0.55, isForeignFee:false };
+}
+
+function normalizeRecord(r){
+  const txnDate = r.txnDate || r.transactionDate || r.date || "";
+  const postingDate = r.postingDate || r.postDate || "";
+  const description = r.description || r.desc || r.memo || r.merchant || "";
+  const ntdAmount = Number(r.ntdAmount ?? r.amountTWD ?? r.localAmount ?? 0);
+  const amount = Number(r.amount ?? r.foreignAmount ?? ntdAmount);
+  const isForeignTxn = Boolean(r.isForeignTxn);
+  const txnLoc = (r.txnLoc || r.country || "").trim() || null;
+  const amtCy = (r.amtCy || r.currency || "").trim() || null;
+
+  const parsed = detectMerchantAndPurpose(description,isForeignTxn);
+  const month = monthOf(txnDate);
+  const needsReview = (!parsed.isForeignFee && ntdAmount > 0 && ((isForeignTxn && parsed.confidence < 0.75) || parsed.confidence < 0.5));
+
+  return {
+    txnDate, postingDate, month, description,
+    ntdAmount, amount, isForeignTxn, txnLoc, amtCy,
+    merchant: parsed.merchant,
+    purpose: parsed.purpose,
+    confidence: parsed.confidence,
+    isForeignFee: parsed.isForeignFee,
+    needsReview
+  };
+}
+
+function extractRecords(json){
+  if(Array.isArray(json)) return json;
+  if(json && Array.isArray(json.payload)) return json.payload;
+  if(json && Array.isArray(json.transactions)) return json.transactions;
+  return [];
+}
+
+async function loadFiles(files){
+  const all = [];
+  const names = [];
+  for(const file of files){
+    try{
+      const text = await file.text();
+      const json = JSON.parse(text);
+      const records = extractRecords(json).map(normalizeRecord);
+      all.push(...records);
+      names.push(file.name);
+    }catch(err){
+      console.error(err);
+      alert(`讀取失敗：${file.name}\n請確認是有效的 JSON 檔案。`);
+      return;
+    }
+  }
+  DATA = all.sort((a,b)=> String(a.txnDate).localeCompare(String(b.txnDate)));
+  resetClicked();
+  refreshMonthOptions();
+  updateAll();
+  const uniqueMonths = unique(DATA.map(x=>x.month).filter(Boolean)).sort();
+  document.getElementById("loadStatus").innerHTML =
+    `已載入 <b>${DATA.length.toLocaleString("zh-Hant-TW")}</b> 筆，來自 <b>${names.length}</b> 個檔案；月份：<span class="pill good">${uniqueMonths.join(" / ") || "—"}</span>`;
+}
+
+function loadDemo(){
+  DATA = DEMO_TRANSACTIONS.map(normalizeRecord);
+  resetClicked();
+  refreshMonthOptions();
+  updateAll();
+  document.getElementById("loadStatus").innerHTML =
+    `目前載入的是 <b>內建 Demo 假資料</b>，共 <b>${DATA.length}</b> 筆；可直接體驗多月份合併分析與篩選。`;
+}
+
+function clearData(){
+  DATA = [];
+  resetClicked();
+  refreshMonthOptions();
+  updateAll();
+  document.getElementById("loadStatus").textContent = "尚未載入資料。可先用右上角「載入內建 Demo」體驗功能。";
+}
+
+function refreshMonthOptions(){
+  const el = document.getElementById("monthFilter");
+  const current = el.value;
+  const months = unique(DATA.map(x=>x.month).filter(Boolean)).sort();
+  el.innerHTML = '<option value="all">全部月份</option>' + months.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join("");
+  if(months.includes(current)) el.value = current;
+  else el.value = "all";
+}
+
+function filteredRows(){
+  const monthFilter = document.getElementById("monthFilter").value;
+  const geoFilter = document.getElementById("geoFilter").value;
+  const scope = document.getElementById("scopeFilter").value;
+  const q = document.getElementById("searchBox").value.toLowerCase().trim();
+  const includeFee = document.getElementById("includeFee").checked;
+  const showLowConfidence = document.getElementById("showLowConfidence").checked;
+
+  return DATA.filter(r => {
+    if(monthFilter !== "all" && r.month !== monthFilter) return false;
+    if(scope === "spend" && !(r.ntdAmount > 0)) return false;
+    if(!includeFee && r.isForeignFee) return false;
+    if(!showLowConfidence && r.confidence < 0.75) return false;
+
+    if(geoFilter === "foreign"){
+      if(!(r.isForeignTxn || r.isForeignFee)) return false;
+    }else if(geoFilter === "domestic"){
+      if(r.isForeignTxn || r.isForeignFee) return false;
+    }
+
+    if(clicked.month && r.month !== clicked.month) return false;
+    if(clicked.purpose && r.purpose !== clicked.purpose) return false;
+    if(clicked.country && !r.isForeignFee && r.txnLoc !== clicked.country) return false;
+    if(clicked.merchant && r.merchant !== clicked.merchant) return false;
+
+    if(q){
+      const hay = `${r.merchant} ${r.purpose} ${r.description}`.toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+function sum(rows, pred){
+  return rows.filter(pred || (()=>true)).reduce((a,b)=> a + (Number(b.ntdAmount)||0), 0);
+}
+function groupSum(rows, keyFn){
+  const map = new Map();
+  for(const r of rows){
+    const k = keyFn(r);
+    map.set(k, (map.get(k)||0) + (Number(r.ntdAmount)||0));
+  }
+  return map;
+}
+
+function resetClicked(){
+  clicked.purpose = null;
+  clicked.month = null;
+  clicked.country = null;
+  clicked.merchant = null;
+}
+
+function renderKpis(rows){
+  const spend = rows.filter(x=>x.ntdAmount > 0);
+  const pay = rows.filter(x=>x.ntdAmount < 0);
+  const foreign = spend.filter(x=>x.isForeignTxn);
+  const fee = spend.filter(x=>x.isForeignFee);
+  const domestic = spend.filter(x=>!x.isForeignTxn && !x.isForeignFee);
+  const uniqueMerchants = unique(spend.map(x=>x.merchant)).length;
+
+  const daily = groupSum(spend, r => r.txnDate || "（無日期）");
+  let dailyTotal = 0; for(const v of daily.values()) dailyTotal += v;
+  const avgDaily = daily.size ? dailyTotal / daily.size : 0;
+  const feeRate = foreign.length ? (sum(fee) / Math.max(sum(foreign),1)) : 0;
+
+  const cards = [
+    ["目前筆數", rows.length.toLocaleString("zh-Hant-TW"), "依目前篩選與點選狀態"],
+    ["支出合計", fmtTwd(sum(spend)), "只加總 ntdAmount > 0"],
+    ["國內支出", fmtTwd(sum(domestic)), "排除海外與海外手續費"],
+    ["海外支出", fmtTwd(sum(foreign)), "isForeignTxn = true"],
+    ["海外手續費", fmtTwd(sum(fee)), `約 ${(feeRate*100).toFixed(2)}%`],
+    ["繳款/退款", fmtTwd(sum(pay)), "只在『含繳款/退款』視圖看到"],
+    ["獨立店家數", uniqueMerchants.toLocaleString("zh-Hant-TW"), "以解析後店家計"],
+    ["平均每日支出", fmtTwd(avgDaily), "以有支出的日期計算"]
+  ];
+
+  const box = document.getElementById("kpis");
+  box.innerHTML = cards.map(([n,v,h]) => `
+    <div class="kpi">
+      <div class="name">${esc(n)}</div>
+      <div class="val">${esc(v)}</div>
+      <div class="hint">${esc(h)}</div>
+    </div>
+  `).join("");
+
+  const filters = [];
+  if(clicked.month) filters.push(`點選月份=${clicked.month}`);
+  if(clicked.purpose) filters.push(`點選用途=${clicked.purpose}`);
+  if(clicked.country) filters.push(`點選國家=${clicked.country}`);
+  if(clicked.merchant) filters.push(`點選店家=${clicked.merchant}`);
+  document.getElementById("activeFilters").innerHTML = filters.length
+    ? `目前點選篩選：<span class="pill warn">${esc(filters.join("，"))}</span>`
+    : "目前沒有點選篩選。";
+}
+
+function renderPurpose(rows){
+  const spend = rows.filter(x=>x.ntdAmount>0);
+  if(!spend.length){
+    document.getElementById("chartPurpose").innerHTML = '<div class="empty">目前沒有可視覺化的支出資料。</div>';
+    return;
+  }
+  const items = Array.from(groupSum(spend, r=>r.purpose || "其他").entries()).sort((a,b)=>b[1]-a[1]);
+  document.getElementById("chartPurpose").innerHTML = "";
+  Plotly.purge("chartPurpose");
+  Plotly.react("chartPurpose", [{
+    labels: items.map(x=>x[0]),
+    values: items.map(x=>x[1]),
+    type: "pie",
+    hole: .55,
+    textinfo: "label+percent",
+    hovertemplate: "%{label}<br>%{value:,} TWD<extra></extra>"
+  }], {
+    paper_bgcolor:"rgba(0,0,0,0)", plot_bgcolor:"rgba(0,0,0,0)", margin:{l:10,r:10,t:10,b:10}, font:{color:"#ebf1ff"}, showlegend:false
+  }, {displayModeBar:false,responsive:true});
+  document.getElementById("chartPurpose").on("plotly_click", ev => {
+    const label = ev?.points?.[0]?.label; if(!label) return;
+    clicked.purpose = (clicked.purpose === label) ? null : String(label);
+    clicked.merchant = null;
+    updateAll();
+  });
+}
+
+function renderMonth(rows){
+  const spend = rows.filter(x=>x.ntdAmount>0);
+  const items = Array.from(groupSum(spend, r=>r.month || "（無月份）").entries()).sort((a,b)=>a[0].localeCompare(b[0]));
+  if(!items.length){
+    document.getElementById("chartMonth").innerHTML = '<div class="empty">目前沒有可視覺化的月份資料。</div>';
+    return;
+  }
+  document.getElementById("chartMonth").innerHTML = "";
+  Plotly.purge("chartMonth");
+  Plotly.react("chartMonth", [{
+    x: items.map(x=>x[0]),
+    y: items.map(x=>x[1]),
+    type: "bar",
+    hovertemplate: "%{x}<br>%{y:,} TWD<extra></extra>"
+  }], {
+    paper_bgcolor:"rgba(0,0,0,0)", plot_bgcolor:"rgba(0,0,0,0)", margin:{l:40,r:10,t:10,b:40},
+    font:{color:"#ebf1ff"}, xaxis:{gridcolor:"rgba(255,255,255,.06)"}, yaxis:{gridcolor:"rgba(255,255,255,.06)"}
+  }, {displayModeBar:false,responsive:true});
+  document.getElementById("chartMonth").on("plotly_click", ev => {
+    const x = ev?.points?.[0]?.x; if(!x) return;
+    clicked.month = (clicked.month === x) ? null : String(x);
+    updateAll();
+  });
+}
+
+function renderCountry(rows){
+  const foreign = rows.filter(x=>x.ntdAmount>0 && x.isForeignTxn);
+  const items = Array.from(groupSum(foreign, r=>r.txnLoc || "（空白）").entries()).filter(x=>x[0] !== "（空白）").sort((a,b)=>b[1]-a[1]);
+  if(!items.length){
+    document.getElementById("chartCountry").innerHTML = '<div class="empty">目前沒有海外支出可顯示國家分布。</div>';
+    return;
+  }
+  document.getElementById("chartCountry").innerHTML = "";
+  Plotly.purge("chartCountry");
+  Plotly.react("chartCountry", [{
+    labels: items.map(x=>x[0]),
+    values: items.map(x=>x[1]),
+    type: "pie",
+    hole: .42,
+    textinfo: "label+percent",
+    hovertemplate: "%{label}<br>%{value:,} TWD<extra></extra>"
+  }], {
+    paper_bgcolor:"rgba(0,0,0,0)", plot_bgcolor:"rgba(0,0,0,0)", margin:{l:10,r:10,t:10,b:10}, font:{color:"#ebf1ff"}, showlegend:false
+  }, {displayModeBar:false,responsive:true});
+  document.getElementById("chartCountry").on("plotly_click", ev => {
+    const label = ev?.points?.[0]?.label; if(!label) return;
+    clicked.country = (clicked.country === label) ? null : String(label);
+    updateAll();
+  });
+}
+
+function renderMerchant(rows){
+  const spend = rows.filter(x=>x.ntdAmount>0);
+  const items = Array.from(groupSum(spend, r=>r.merchant || "（未知）").entries()).sort((a,b)=>b[1]-a[1]).slice(0,15);
+  if(!items.length){
+    document.getElementById("chartMerchant").innerHTML = '<div class="empty">目前沒有店家資料。</div>';
+    return;
+  }
+  document.getElementById("chartMerchant").innerHTML = "";
+  Plotly.purge("chartMerchant");
+  Plotly.react("chartMerchant", [{
+    x: items.map(x=>x[1]).reverse(),
+    y: items.map(x=>x[0]).reverse(),
+    type: "bar", orientation:"h",
+    hovertemplate: "%{y}<br>%{x:,} TWD<extra></extra>"
+  }], {
+    paper_bgcolor:"rgba(0,0,0,0)", plot_bgcolor:"rgba(0,0,0,0)", margin:{l:140,r:10,t:10,b:40},
+    font:{color:"#ebf1ff"}, xaxis:{gridcolor:"rgba(255,255,255,.06)"}, yaxis:{automargin:true}
+  }, {displayModeBar:false,responsive:true});
+  document.getElementById("chartMerchant").on("plotly_click", ev => {
+    const y = ev?.points?.[0]?.y; if(!y) return;
+    clicked.merchant = (clicked.merchant === y) ? null : String(y);
+    updateAll();
+  });
+}
+
+function renderTimeline(rows){
+  const spend = rows.filter(x=>x.ntdAmount>0);
+  const purposes = unique(spend.map(x=>x.purpose)).sort();
+  const byDate = new Map();
+  for(const r of spend){
+    const d = r.txnDate || "（無日期）";
+    if(!byDate.has(d)) byDate.set(d,{});
+    const obj = byDate.get(d);
+    obj[r.purpose] = (obj[r.purpose] || 0) + (Number(r.ntdAmount)||0);
+  }
+  const dates = Array.from(byDate.keys()).sort();
+  if(!dates.length){
+    document.getElementById("chartTimeline").innerHTML = '<div class="empty">目前沒有每日支出資料。</div>';
+    return;
+  }
+  const traces = purposes.map(p => ({
+    x: dates,
+    y: dates.map(d => byDate.get(d)[p] || 0),
+    type: "bar",
+    name: p,
+    hovertemplate: "%{x}<br>" + p + ": %{y:,} TWD<extra></extra>"
+  }));
+  document.getElementById("chartTimeline").innerHTML = "";
+  Plotly.purge("chartTimeline");
+  Plotly.react("chartTimeline", traces, {
+    barmode:"stack",
+    paper_bgcolor:"rgba(0,0,0,0)", plot_bgcolor:"rgba(0,0,0,0)", margin:{l:46,r:10,t:10,b:56},
+    font:{color:"#ebf1ff"}, xaxis:{gridcolor:"rgba(255,255,255,.06)"}, yaxis:{gridcolor:"rgba(255,255,255,.06)"},
+    legend:{orientation:"h",y:-0.2,x:0}
+  }, {displayModeBar:false,responsive:true});
+  document.getElementById("chartTimeline").on("plotly_click", ev => {
+    const p = ev?.points?.[0]?.data?.name; if(!p) return;
+    clicked.purpose = (clicked.purpose === p) ? null : String(p);
+    updateAll();
+  });
+}
+
+function renderTreemap(rows){
+  const spend = rows.filter(x=>x.ntdAmount>0);
+  if(!spend.length){
+    document.getElementById("chartTreemap").innerHTML = '<div class="empty">目前沒有可視覺化的支出資料。</div>';
+    return;
+  }
+  const total = spend.reduce((a,b) => a + (Number(b.ntdAmount)||0), 0);
+  const labels = ["全部"], parents = [""], values = [total];
+  const purposeSum = groupSum(spend, r=>r.purpose || "其他");
+  const purposeKeys = Array.from(purposeSum.keys()).sort((a,b)=>purposeSum.get(b)-purposeSum.get(a));
+  for(const p of purposeKeys){
+    labels.push(p); parents.push("全部"); values.push(purposeSum.get(p));
+    const inP = spend.filter(r => r.purpose === p);
+    const merchantItems = Array.from(groupSum(inP, r=>r.merchant).entries()).sort((a,b)=>b[1]-a[1]).slice(0,18);
+    for(const [m,v] of merchantItems){
+      labels.push(m); parents.push(p); values.push(v);
+    }
+  }
+  document.getElementById("chartTreemap").innerHTML = "";
+  Plotly.purge("chartTreemap");
+  Plotly.react("chartTreemap", [{
+    type:"treemap", labels, parents, values, branchvalues:"total",
+    hovertemplate: "%{label}<br>%{value:,} TWD<extra></extra>"
+  }], {
+    paper_bgcolor:"rgba(0,0,0,0)", plot_bgcolor:"rgba(0,0,0,0)", margin:{l:10,r:10,t:10,b:10}, font:{color:"#ebf1ff"}
+  }, {displayModeBar:false,responsive:true});
+  document.getElementById("chartTreemap").on("plotly_click", ev => {
+    const point = ev?.points?.[0]; if(!point) return;
+    const label = String(point.label || "");
+    const parent = String(point.parent || "");
+    if(label === "全部") return;
+    if(parent === "全部"){
+      clicked.purpose = (clicked.purpose === label) ? null : label;
+      clicked.merchant = null;
+    }else{
+      clicked.purpose = parent;
+      clicked.merchant = (clicked.merchant === label) ? null : label;
+    }
+    updateAll();
+  });
+}
+
+function renderReview(rows){
+  const review = rows.filter(x => x.needsReview && x.ntdAmount > 0).sort((a,b)=>b.ntdAmount-a.ntdAmount).slice(0,12);
+  const box = document.getElementById("reviewBox");
+  if(!review.length){
+    box.innerHTML = "目前視圖下沒有需要額外人工對照的交易。";
+    return;
+  }
+  box.innerHTML = `
+    <div class="tableWrap" style="max-height:360px">
+      <table>
+        <thead><tr><th>日期</th><th>金額</th><th>店家</th><th>用途</th><th>原因</th></tr></thead>
+        <tbody>
+          ${review.map(x => `
+            <tr>
+              <td class="muted">${esc(x.txnDate)}</td>
+              <td style="text-align:right"><b>${esc(fmtTwd(x.ntdAmount))}</b></td>
+              <td>${esc(x.merchant)}</td>
+              <td class="muted">${esc(x.purpose)}</td>
+              <td><span class="pill bad">解析信心 ${Math.round(x.confidence*100)}%</span></td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function renderTable(rows){
+  const sorted = rows.slice().sort((a,b)=> String(b.txnDate).localeCompare(String(a.txnDate)) || (b.ntdAmount - a.ntdAmount));
+  const show = sorted.slice(0,2500);
+  const tbody = document.getElementById("tbody");
+  tbody.innerHTML = show.map(x => `
+    <tr>
+      <td>${esc(x.txnDate)}</td>
+      <td class="muted">${esc(x.month)}</td>
+      <td style="text-align:right">${esc(fmtTwd(x.ntdAmount))}</td>
+      <td>${esc(x.purpose)}</td>
+      <td>${esc(x.merchant)} ${x.isForeignFee ? '<span class="pill warn">手續費</span>' : ''}</td>
+      <td>${x.isForeignTxn ? '<span class="pill warn">海外</span>' : '<span class="pill">國內</span>'}</td>
+      <td class="muted">${esc(x.txnLoc || "")}</td>
+      <td><span class="pill ${x.confidence >= 0.85 ? 'good' : (x.confidence >= 0.75 ? '' : 'bad')}">${Math.round(x.confidence*100)}%</span></td>
+      <td class="muted" style="max-width:520px;overflow:hidden;text-overflow:ellipsis">${esc(x.description)}</td>
+    </tr>
+  `).join("");
+  document.getElementById("tableHint").textContent = `顯示 ${show.length.toLocaleString("zh-Hant-TW")} / ${sorted.length.toLocaleString("zh-Hant-TW")} 筆（避免卡頓最多顯示 2500 筆）。`;
+}
+
+function downloadCurrentCsv(){
+  const rows = filteredRows();
+  if(!rows.length){ alert("目前沒有資料可下載。"); return; }
+  const cols = ["txnDate","month","ntdAmount","amount","amtCy","isForeignTxn","txnLoc","purpose","merchant","confidence","description"];
+  const csv = [cols.join(",")].concat(rows.map(r => cols.map(c => {
+    const v = r[c];
+    if(v === null || v === undefined) return "";
+    const s = String(v).replace(/"/g,'""');
+    return /[",\n]/.test(s) ? `"${s}"` : s;
+  }).join(","))).join("\n");
+  const blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "card-spending-view.csv";
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
+
+function updateAll(){
+  if(typeof Plotly === "undefined"){
+    document.body.innerHTML = '<div class="wrap"><div class="card"><h2>無法載入圖表函式庫</h2><div class="hint">這個 HTML 依賴 Plotly CDN。若要完全離線版本，我可以再幫你輸出一份不依賴 CDN 的版本。</div></div></div>';
+    return;
+  }
+  if(!DATA.length){
+    document.getElementById("kpis").innerHTML = `
+      <div class="kpi"><div class="name">目前筆數</div><div class="val">0</div><div class="hint">請上傳 JSON 或載入 Demo</div></div>
+      <div class="kpi"><div class="name">支出合計</div><div class="val">-</div><div class="hint">尚無資料</div></div>
+      <div class="kpi"><div class="name">國內/海外</div><div class="val">-</div><div class="hint">尚無資料</div></div>
+      <div class="kpi"><div class="name">店家數</div><div class="val">-</div><div class="hint">尚無資料</div></div>`;
+    document.getElementById("activeFilters").textContent = "目前沒有資料。";
+    ["chartPurpose","chartMonth","chartCountry","chartMerchant","chartTimeline","chartTreemap"].forEach(id => {
+      document.getElementById(id).innerHTML = '<div class="empty">尚未載入資料。</div>';
+    });
+    document.getElementById("reviewBox").textContent = "目前沒有資料。";
+    document.getElementById("tbody").innerHTML = "";
+    document.getElementById("tableHint").textContent = "";
+    return;
+  }
+  const rows = filteredRows();
+  renderKpis(rows);
+  renderPurpose(rows);
+  renderMonth(rows);
+  renderCountry(rows);
+  renderMerchant(rows);
+  renderTimeline(rows);
+  renderTreemap(rows);
+  renderReview(rows);
+  renderTable(rows);
+}
+
+function bindEvents(){
+  ["monthFilter","geoFilter","scopeFilter","searchBox","includeFee","showLowConfidence"].forEach(id => {
+    const el = document.getElementById(id);
+    el.addEventListener("change", updateAll);
+    el.addEventListener("input", updateAll);
+  });
+
+  document.getElementById("btnDemo").addEventListener("click", loadDemo);
+  document.getElementById("btnClear").addEventListener("click", clearData);
+  document.getElementById("btnDownloadCsv").addEventListener("click", downloadCurrentCsv);
+
+  const fileInput = document.getElementById("fileInput");
+  fileInput.addEventListener("change", e => {
+    const files = Array.from(e.target.files || []);
+    if(files.length) loadFiles(files);
+    fileInput.value = "";
+  });
+
+  const dz = document.getElementById("dropZone");
+  dz.addEventListener("dragover", e => { e.preventDefault(); dz.classList.add("drag"); });
+  dz.addEventListener("dragleave", () => dz.classList.remove("drag"));
+  dz.addEventListener("drop", e => {
+    e.preventDefault(); dz.classList.remove("drag");
+    const files = Array.from(e.dataTransfer.files || []).filter(f => f.name.toLowerCase().endsWith(".json"));
+    if(files.length) loadFiles(files);
+  });
+}
+
+(function init(){
+  bindEvents();
+  updateAll();
+})();
+</script>
+</body>
+</html>
